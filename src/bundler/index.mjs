@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as ast from 'meriyah';
 import { fileURLToPath } from 'url';
+import { print } from 'recast';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,7 +85,11 @@ const getImport = (item, allDeps) => {
 
   const importFunctionName = item.specifiers[0].imported.name;
 
-  const fileImported = item.value.source;
+  console.log('[ getImport ]', item);
+
+  console.log('[ importFunctionName ]', importFunctionName);
+
+  const fileImported = item.source.value;
 
   const fullFile = path.resolve(fileImported);
 
@@ -137,8 +142,45 @@ const getExport = item => {
   }
 }
 
+const transform = depsArray => {
+
+  const updatedModules = depsArray.reduce((acc, dependency, index) => {
+    const updatedAst = dependency.source.body.map(item => {
+      if(item.type === "ImportDeclaration"){
+        item = getImport(item,depsArray);
+      }
+
+      if(item.type === "ExportNamedDeclaration"){
+        item = getExport(item);
+      }
+
+      return item
+    })
+
+    console.log('[ updatedAst ]', updatedAst);
+
+    dependency.source.body = updatedAst;
+
+    const updatedSource = print(dependency.source).code;
+
+    const updatedTemplate = buildModuleTemplateString(updatedSource,index);
+
+    acc.push(updatedTemplate);
+
+    return acc;
+  },[]);
+
+  const bundleString = buildRuntimeTemplateString(updatedModules.join(","), depsArray.length - 1);
+
+  console.log('[ bundleString ]', bundleString);
+
+  return bundleString;
+}
+
 const targetPath = path.resolve(__dirname,'./main.mjs');
 
 depthsGraph(targetPath);
 
 console.log('[ depthsArray ]', depthsArray);
+
+transform(depthsArray);
